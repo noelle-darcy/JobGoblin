@@ -1,0 +1,8 @@
+{
+  "name": "JobGoblin",
+  "description": "A live interview preparer! ",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "prompt": ""
+}
