@@ -7,8 +7,9 @@
 import {GoogleGenAI, LiveServerMessage, Modality, Session} from '@google/genai';
 import {LitElement, css, html} from 'lit';
 import {customElement, state} from 'lit/decorators.js';
+import * as pdfjsLib from 'pdfjs-dist';
 import {createBlob, decode, decodeAudioData} from './utils';
-import './visual-3d';
+import './goblin-visual';
 
 @customElement('gdm-live-audio')
 export class GdmLiveAudio extends LitElement {
@@ -18,6 +19,7 @@ export class GdmLiveAudio extends LitElement {
   @state() isContextSet = false;
   @state() codingQuestionsEnabled = false;
   @state() isCodingSessionActive = false;
+  @state() currentQuestionTranscription = '';
 
   private client: GoogleGenAI;
   // FIX: Refactor session to sessionPromise to prevent race conditions.
@@ -44,12 +46,12 @@ export class GdmLiveAudio extends LitElement {
       right: 0;
       z-index: 10;
       text-align: center;
-      color: white;
+      color: #7D5C65;
       font-family: Google Sans, sans-serif;
     }
 
     .controls {
-      z-index: 10;
+      z-index: 30;
       position: absolute;
       bottom: 10vh;
       left: 0;
@@ -57,15 +59,15 @@ export class GdmLiveAudio extends LitElement {
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-direction: column;
+      flex-direction: row;
       gap: 10px;
 
       button {
         outline: none;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        color: white;
+        border: 1px solid #6b4d56;
+        color: #eac4d5;
         border-radius: 12px;
-        background: rgba(255, 255, 255, 0.1);
+        background: #7d5c65;
         width: 64px;
         height: 64px;
         cursor: pointer;
@@ -75,17 +77,11 @@ export class GdmLiveAudio extends LitElement {
         display: flex;
         align-items: center;
         justify-content: center;
-
-        &:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
+        transition: background-color 0.2s;
       }
 
-      button#codingButton {
-        width: auto;
-        height: 48px;
-        padding: 0 1em;
-        font-size: 16px;
+      button:hover {
+        background: #9e7e88;
       }
 
       button[disabled] {
@@ -100,7 +96,7 @@ export class GdmLiveAudio extends LitElement {
     .context-form-wrapper {
       position: absolute;
       inset: 0;
-      background: rgba(0, 0, 0, 0.7);
+      background: #EAC4D5;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -110,14 +106,13 @@ export class GdmLiveAudio extends LitElement {
     }
 
     .context-form {
-      background: #1e1e1e;
+      background: #EAC4D5;
       padding: 2em;
-      border-radius: 12px;
+      border-radius: 50px;
       width: 90%;
       max-width: 800px;
       max-height: 90vh;
       overflow-y: auto;
-      border: 1px solid rgba(255, 255, 255, 0.2);
       display: flex;
       flex-direction: column;
       gap: 1em;
@@ -126,44 +121,63 @@ export class GdmLiveAudio extends LitElement {
     .context-form h2 {
       margin-top: 0;
       text-align: center;
-      color: #e8eaed;
+      color: #7D5C65;
     }
 
     .context-form p {
       text-align: center;
       margin-top: -0.5em;
       margin-bottom: 1em;
-      color: #9aa0a6;
+      color: #7D5C65;
     }
 
     .context-form label {
       font-weight: bold;
       margin-bottom: 0.5em;
       display: block;
-      color: #e8eaed;
+      color: #7D5C65;
     }
 
     .context-form textarea,
     .context-form input[type='url'],
-    .context-form input[type='text'] {
+    .context-form input[type='text'],
+    .context-form input[type='file'] {
       width: 100%;
-      background: #282a2d;
+      background: #F1DEDE;
       border: 1px solid #5f6368;
-      color: white;
+      color: #7D5C65;
       padding: 0.75em;
       border-radius: 8px;
       box-sizing: border-box;
       font-family: inherit;
+    }
+
+    .context-form textarea {
       resize: vertical;
+    }
+
+    .context-form input[type='file']::file-selector-button {
+      background: #7D5C65;
+      color: #EAC4D5;
+      border: none;
+      padding: 0.5em 1em;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 1em;
+      transition: background 0.2s;
+    }
+
+    .context-form input[type='file']::file-selector-button:hover {
+      background: #463439;
     }
 
     .context-form textarea::placeholder,
     .context-form input::placeholder {
-      color: #9aa0a6;
+      color: #7D5C65;
     }
 
     .context-form fieldset {
-      border: 1px solid #5f6368;
+      border: 1px solid #7D5C65;
       border-radius: 8px;
       padding: 1em;
     }
@@ -171,7 +185,7 @@ export class GdmLiveAudio extends LitElement {
     .context-form legend {
       font-weight: bold;
       padding: 0 0.5em;
-      color: #e8eaed;
+      color: #7D5C65;
     }
 
     .context-form fieldset div {
@@ -185,8 +199,8 @@ export class GdmLiveAudio extends LitElement {
       width: 100%;
       padding: 1em;
       margin-top: 1em;
-      background: #89b4f8;
-      color: #202124;
+      background: #7D5C65;
+      color: #EAC4D5;
       border: none;
       border-radius: 8px;
       font-size: 1em;
@@ -196,7 +210,7 @@ export class GdmLiveAudio extends LitElement {
     }
 
     .context-form button[type='submit']:hover {
-      background: #a6c9fa;
+      background: #463439;
     }
 
     .coding-wrapper {
@@ -206,7 +220,7 @@ export class GdmLiveAudio extends LitElement {
       transform: translateX(-50%);
       width: 90%;
       max-width: 800px;
-      background: #1e1e1e;
+      background: #EAC4D5;
       border-radius: 12px;
       padding: 1em;
       z-index: 15;
@@ -254,6 +268,9 @@ export class GdmLiveAudio extends LitElement {
 
   constructor() {
     super();
+    // Use a CDN for the PDF.js worker to enable PDF parsing.
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://esm.sh/pdfjs-dist@^4.4.178/build/pdf.worker.min.js';
     this.initClient();
   }
 
@@ -310,6 +327,24 @@ export class GdmLiveAudio extends LitElement {
             this.sources.add(source);
           }
 
+          const outputTranscription =
+            message.serverContent?.outputTranscription;
+          if (outputTranscription) {
+            const text = outputTranscription.text;
+            this.currentQuestionTranscription += text;
+            // Auto-start coding session
+            const triggerPhrase = "let's move on to the coding segment";
+            if (
+              this.currentQuestionTranscription
+                .toLowerCase()
+                .includes(triggerPhrase)
+            ) {
+              if (this.codingQuestionsEnabled && !this.isCodingSessionActive) {
+                this.startCodingSession();
+              }
+            }
+          }
+
           const interrupted = message.serverContent?.interrupted;
           if (interrupted) {
             for (const source of this.sources.values()) {
@@ -331,8 +366,8 @@ export class GdmLiveAudio extends LitElement {
         speechConfig: {
           // FIX: Use a supported voice name.
           voiceConfig: {prebuiltVoiceConfig: {voiceName: 'Zephyr'}},
-          // languageCode: 'en-GB'
         },
+        outputAudioTranscription: {},
         systemInstruction,
       },
     });
@@ -445,12 +480,45 @@ export class GdmLiveAudio extends LitElement {
     this.updateStatus('Session cleared. Please provide new interview context.');
   }
 
-  private handleContextSubmit(event: SubmitEvent) {
+  private async handleContextSubmit(event: SubmitEvent) {
     event.preventDefault();
     const form = event.target as HTMLFormElement;
     const formData = new FormData(form);
+    const resumeFile = formData.get('resume') as File;
 
-    const resume = formData.get('resume') as string;
+    if (!resumeFile || resumeFile.size === 0) {
+      this.updateError('Please select a resume PDF file.');
+      return;
+    }
+    this.updateStatus('Parsing your resume...');
+
+    let resume = '';
+    try {
+      const arrayBuffer = await resumeFile.arrayBuffer();
+      const typedarray = new Uint8Array(arrayBuffer);
+      const pdf = await pdfjsLib.getDocument({data: typedarray}).promise;
+      const numPages = pdf.numPages;
+      const pageTexts = [];
+
+      for (let i = 1; i <= numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        // The item type is TextItem, but to avoid complex type imports, we cast to any.
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(' ');
+        pageTexts.push(pageText);
+      }
+      resume = pageTexts.join('\n\n');
+    } catch (e) {
+      console.error('Failed to parse PDF:', e);
+      this.updateError(
+        'Could not read the resume PDF. Please try a different file.',
+      );
+      this.updateStatus(''); // Clear parsing status
+      return;
+    }
+
     const jobDescription = formData.get('jobDescription') as string;
     const careerPageUrl = formData.get('careerPageUrl') as string;
     const interviewHints = formData.get('interviewHints') as string;
@@ -502,6 +570,8 @@ ${interviewHints}
 
   private startCodingSession() {
     this.isCodingSessionActive = true;
+    // Clear any transcription text that led up to the coding session
+    this.currentQuestionTranscription = '';
   }
 
   private handleNextCodingQuestion() {
@@ -509,7 +579,15 @@ ${interviewHints}
       '.coding-wrapper textarea',
     ) as HTMLTextAreaElement | null;
     if (textarea) {
+      const solution = textarea.value;
+      if (this.currentQuestionTranscription.trim() && solution.trim()) {
+        console.log('--- Saving to Database (simulation) ---');
+        console.log('Question:', this.currentQuestionTranscription.trim());
+        console.log('Solution:', solution.trim());
+        console.log('-----------------------------------------');
+      }
       textarea.value = '';
+      this.currentQuestionTranscription = ''; // Reset for the next question
     }
   }
 
@@ -524,13 +602,8 @@ ${interviewHints}
           <h2>Prepare Your Mock Interview</h2>
           <p>Provide the details below to start a tailored interview session.</p>
 
-          <label for="resume">Your Resume</label>
-          <textarea
-            id="resume"
-            name="resume"
-            rows="6"
-            required
-            placeholder="Paste your resume here..."></textarea>
+          <label for="resume">Your Resume (PDF)</label>
+          <input type="file" id="resume" name="resume" accept=".pdf" required />
 
           <label for="jobDescription">Job Description</label>
           <textarea
@@ -598,14 +671,14 @@ ${interviewHints}
       height="40px"
       viewBox="0 -960 960 960"
       width="40px"
-      fill="#ffffff">
+      fill="#EAC4D5">
       <path d="M320-200v-560l440 280-440 280Z" />
     </svg>`;
     const pauseIcon = html`<svg
       height="40px"
       viewBox="0 -960 960 960"
       width="40px"
-      fill="#ffffff">
+      fill="#EAC4D5">
       <path
         d="M520-200v-560h160v560H520Zm-240 0v-560h160v560H280Z" />
     </svg>`;
@@ -617,34 +690,26 @@ ${interviewHints}
         <div
           class="controls"
           style="visibility: ${this.isContextSet ? 'visible' : 'hidden'}">
+          <button id="recordButton" @click=${this.toggleRecording}>
+            ${this.isRecording ? pauseIcon : playIcon}
+          </button>
           <button id="resetButton" @click=${this.reset}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               height="40px"
               viewBox="0 -960 960 960"
               width="40px"
-              fill="#ffffff">
+              fill="#EAC4D5">
               <path
                 d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z" />
             </svg>
           </button>
-          <button id="recordButton" @click=${this.toggleRecording}>
-            ${this.isRecording ? pauseIcon : playIcon}
-          </button>
-          <button
-            id="codingButton"
-            @click=${this.startCodingSession}
-            ?hidden=${
-              !this.codingQuestionsEnabled || this.isCodingSessionActive
-            }>
-            Start Coding Session
-          </button>
         </div>
 
         <div id="status"> ${this.error || this.status} </div>
-        <gdm-live-audio-visuals-3d
-          .inputNode=${this.inputNode}
-          .outputNode=${this.outputNode}></gdm-live-audio-visuals-3d>
+        <goblin-visual
+          class=${this.isCodingSessionActive ? 'coding-active' : ''}
+          .outputNode=${this.outputNode}></goblin-visual>
       </div>
     `;
   }
